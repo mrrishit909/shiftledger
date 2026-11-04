@@ -1,0 +1,11 @@
+{
+  "name": "shiftledger",
+  "version": "0.1.0",
+  "description": "Dependency-free synthetic staffing-evidence reconciliation engine (fictional rules; not a CMS validator).",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "exports": "./src/index.js",
+  "engines": { "node": ">=24" },
+  "scripts": { "test": "node --test" }
+}
