@@ -9,6 +9,7 @@ export const LIMITS = Object.freeze({
   maxIdLength: 64,
   maxMinutesPerPersonDay: 1440,
   maxNoteLength: 500,
+  maxReportableRoles: 64,
 });
 export const SOURCE_STATUSES = Object.freeze(['APPROVED', 'UNAPPROVED', 'VOID']);
 export const SOURCE_TYPES = Object.freeze(['PAYROLL', 'AGENCY']);
@@ -52,6 +53,15 @@ export function isCalendarDate(value) {
   return d <= dim;
 }
 
+const UTC_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/;
+
+/** Strict UTC instant YYYY-MM-DDTHH:MM:SSZ: real calendar date, 00..23 h, 00..59 min/s (no leap second). */
+export function isUtcTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const m = UTC_RE.exec(value);
+  return !!m && isCalendarDate(m[1]) && Number(m[2]) <= 23 && Number(m[3]) <= 59 && Number(m[4]) <= 59;
+}
+
 function isPlainObject(v) {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
   const proto = Object.getPrototypeOf(v);
@@ -72,8 +82,11 @@ class Collector {
 
 function checkKeys(obj, allowed, path, err) {
   let ok = true;
-  for (const key of Object.keys(obj)) {
-    if (FORBIDDEN_KEYS.has(key)) { err.add('FORBIDDEN_KEY', `${path}.${key}`, `forbidden key "${key}"`); ok = false; }
+  // Reflect.ownKeys also sees symbol and non-enumerable keys, which Object.keys would skip.
+  for (const sym of Reflect.ownKeys(obj)) {
+    const key = String(sym);
+    if (typeof sym !== 'string') { err.add('UNKNOWN_FIELD', `${path}.${key}`, `unknown field "${key}"`); ok = false; }
+    else if (FORBIDDEN_KEYS.has(key)) { err.add('FORBIDDEN_KEY', `${path}.${key}`, `forbidden key "${key}"`); ok = false; }
     else if (TIMESTAMP_FIELDS.has(key)) { err.add('RAW_TIMESTAMP_UNSUPPORTED', `${path}.${key}`, 'raw punch/timestamps are unsupported in v1; supply day-split rows with an explicit local work date'); ok = false; }
     else if (!allowed.includes(key)) { err.add('UNKNOWN_FIELD', `${path}.${key}`, `unknown field "${key}"`); ok = false; }
   }
@@ -97,11 +110,15 @@ function validateRules(rules, err) {
   if (!checkKeys(rules, RULE_FIELDS, 'rules', err)) return null;
   let ok = true;
   const fail = (field, msg) => { err.add('INVALID_RULES', `rules.${field}`, msg); ok = false; };
+  for (const f of RULE_FIELDS) if (!Object.hasOwn(rules, f)) fail(f, `missing field "${f}"`);
+  if (!ok) return null;
+  // Lists are length-bounded before any per-element work.
+  const listOk = (v, max) => Array.isArray(v) && v.length >= 1 && v.length <= max;
   if (!isId(rules.rulesetId)) fail('rulesetId', 'rulesetId must be an ID');
   if (rules.fictional !== true) fail('fictional', 'rules must be explicitly marked fictional:true; authoritative CMS rules are out of scope');
   if (rules.approvalStatus !== 'ILLUSTRATIVE_UNAPPROVED') fail('approvalStatus', 'approvalStatus must be ILLUSTRATIVE_UNAPPROVED');
-  if (!Array.isArray(rules.reportableRoles) || rules.reportableRoles.length === 0 || !rules.reportableRoles.every((r) => typeof r === 'string' && ROLE_RE.test(r)) || new Set(rules.reportableRoles).size !== rules.reportableRoles.length) fail('reportableRoles', 'reportableRoles must be a non-empty list of unique role codes');
-  if (!Array.isArray(rules.eligibleStatuses) || rules.eligibleStatuses.length === 0 || !rules.eligibleStatuses.every((s) => SOURCE_STATUSES.includes(s)) || new Set(rules.eligibleStatuses).size !== rules.eligibleStatuses.length) fail('eligibleStatuses', `eligibleStatuses must be unique values from ${SOURCE_STATUSES.join('|')}`);
+  if (!listOk(rules.reportableRoles, LIMITS.maxReportableRoles) || !rules.reportableRoles.every((r) => typeof r === 'string' && ROLE_RE.test(r)) || new Set(rules.reportableRoles).size !== rules.reportableRoles.length) fail('reportableRoles', `reportableRoles must be a non-empty list of at most ${LIMITS.maxReportableRoles} unique role codes`);
+  if (!listOk(rules.eligibleStatuses, SOURCE_STATUSES.length) || !rules.eligibleStatuses.every((s) => SOURCE_STATUSES.includes(s)) || new Set(rules.eligibleStatuses).size !== rules.eligibleStatuses.length) fail('eligibleStatuses', `eligibleStatuses must be unique values from ${SOURCE_STATUSES.join('|')}`);
   if (rules.toleranceMinutes !== 0) fail('toleranceMinutes', 'toleranceMinutes must be 0 in v1');
   if (!ok) return null;
   return {
@@ -141,13 +158,15 @@ export function validateDataset(input) {
   const err = new Collector();
   if (!isPlainObject(input)) return { ok: false, errors: [{ code: 'INVALID_DATASET', path: '$', message: 'dataset must be a JSON object' }] };
   checkKeys(input, TOP_FIELDS, '$', err);
-  if (input.schemaVersion !== SCHEMA_VERSION) err.add('UNSUPPORTED_SCHEMA', 'schemaVersion', `schemaVersion must be ${SCHEMA_VERSION}`);
-  if (!isId(input.datasetId)) err.add('INVALID_ID', 'datasetId', 'datasetId must be an ID');
-  const rules = validateRules(input.rules, err);
+  // Own properties only: an inherited (or polluted Object.prototype) value never counts.
+  const own = (k) => (Object.hasOwn(input, k) ? input[k] : undefined);
+  if (own('schemaVersion') !== SCHEMA_VERSION) err.add('UNSUPPORTED_SCHEMA', 'schemaVersion', `schemaVersion must be ${SCHEMA_VERSION}`);
+  if (!isId(own('datasetId'))) err.add('INVALID_ID', 'datasetId', 'datasetId must be an ID');
+  const rules = validateRules(own('rules'), err);
 
   let totalRows = 0;
   for (const table of TABLES) {
-    if (!Array.isArray(input[table])) err.add('INVALID_TABLE', table, `${table} must be an array`);
+    if (!Array.isArray(own(table))) err.add('INVALID_TABLE', table, `${table} must be an array`);
     else totalRows += input[table].length;
   }
   if (totalRows > LIMITS.maxRows) err.add('ROW_LIMIT_EXCEEDED', '$', `dataset has ${totalRows} rows; limit is ${LIMITS.maxRows}`);
@@ -159,21 +178,25 @@ export function validateDataset(input) {
     const spec = ROW_FIELDS[table];
     const allowed = spec.person ? [...spec.required, 'personId', 'externalId'] : spec.required;
     norm[table] = [];
-    input[table].forEach((row, i) => {
+    // Index loop, not forEach: array holes are rejected as INVALID_ROW instead of skipped.
+    const visit = (row, i) => {
       const path = `${table}[${i}]`;
       if (!isPlainObject(row)) { err.add('INVALID_ROW', path, 'row must be an object'); return; }
       if (!checkKeys(row, allowed, path, err)) return;
       let ok = true;
       for (const f of spec.required) if (!Object.hasOwn(row, f)) { err.add('MISSING_FIELD', `${path}.${f}`, `missing field "${f}"`); ok = false; }
       if (spec.person) {
-        const hasP = Object.hasOwn(row, 'personId'), hasE = Object.hasOwn(row, 'externalId');
-        if (hasP === hasE) { err.add('PERSON_REFERENCE', path, 'row must have exactly one of personId or externalId'); ok = false; }
+        // externalId:null is the normalized "no alias" form and counts as absent, so a
+        // normalized dataset re-validates to itself.
+        const hasP = Object.hasOwn(row, 'personId'), hasE = Object.hasOwn(row, 'externalId') && row.externalId !== null;
+        if (!hasP && !hasE) { err.add('PERSON_REFERENCE', path, 'row must have personId or a non-null externalId'); ok = false; }
       }
       if (!ok) return;
       const out = { __index: i };
       for (const f of allowed) {
         if (!Object.hasOwn(row, f)) continue;
         const v = row[f];
+        if (spec.person && f === 'externalId' && v === null) continue;
         const fp = `${path}.${f}`;
         if (f === 'minutes') { if (!checkMinutes(v, fp, err)) ok = false; }
         else if (f === 'date' || f === 'effectiveFrom' || f === 'effectiveTo') { if (!checkDate(v, fp, err)) ok = false; }
@@ -187,7 +210,8 @@ export function validateDataset(input) {
       }
       if (ok && out.effectiveFrom && compareCodeUnits(out.effectiveFrom, out.effectiveTo) > 0) { err.add('INVALID_INTERVAL', path, 'effectiveFrom must not be after effectiveTo'); ok = false; }
       if (ok) norm[table].push(out);
-    });
+    };
+    for (let i = 0; i < input[table].length; i++) visit(input[table][i], i);
   }
   if (err.errors.length) return { ok: false, errors: err.sorted() };
 
@@ -235,6 +259,7 @@ export function validateDataset(input) {
       if (Object.hasOwn(r, 'externalId')) {
         const alias = aliasMap.get(`${ALIAS_SOURCE_BY_TABLE[table]}\u0000${r.externalId}`);
         if (!alias) { err.add('UNKNOWN_ALIAS', `${path}.externalId`, `no ${ALIAS_SOURCE_BY_TABLE[table]} alias for "${r.externalId}"`); continue; }
+        if (Object.hasOwn(r, 'personId') && r.personId !== alias.personId) { err.add('ALIAS_PERSON_MISMATCH', `${path}.personId`, `personId "${r.personId}" contradicts alias ${alias.source}/${r.externalId} -> "${alias.personId}"`); continue; }
         r.personId = alias.personId;
       } else {
         r.externalId = null;

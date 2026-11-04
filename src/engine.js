@@ -23,6 +23,28 @@ export const PARTITION_KEYS = Object.freeze([
   'selectionRequired', 'configurationRequired', 'conflictingReferenceExcluded',
 ]);
 
+// Reports minted by buildReport in this process. Module-private: nothing can add to it, so
+// membership proves engine provenance; deepFreeze proves the content is unmodified. Clones,
+// deserialized copies and hand-built objects (even with a recomputed reportId) are rejected.
+const MINTED_REPORTS = new WeakSet();
+
+/** True only for an unmodified report object returned by reconcile() in this process. */
+export function isEngineReport(value) {
+  return MINTED_REPORTS.has(value);
+}
+
+/** Throw a TypeError carrying `.code`; the documented failure mode of value-returning APIs. */
+export function argumentError(code, message) {
+  const e = new TypeError(message);
+  e.code = code;
+  return e;
+}
+
+/** Throw UNTRUSTED_REPORT unless `report` is engine-minted. Checked before any property access. */
+export function assertEngineReport(report) {
+  if (!MINTED_REPORTS.has(report)) throw argumentError('UNTRUSTED_REPORT', 'report must be the unmodified object returned by reconcile() in this process; clones, deserialized or hand-built reports are not accepted');
+}
+
 const ctxKey = (facilityId, personId, date) => `${facilityId}\u0000${personId}\u0000${date}`;
 const within = (date, row) => compareCodeUnits(row.effectiveFrom, date) <= 0 && compareCodeUnits(date, row.effectiveTo) <= 0;
 const rulesCite = (rules) => `rules:${rules.rulesetId}`;
@@ -39,9 +61,16 @@ export function reconcile(input) {
   return { ok: true, report: buildReport(v.dataset) };
 }
 
-/** SHA-256 of the canonical normalized dataset (row order independent). */
+const hashDataset = (ds) => sha256Hex(canonicalJson(ds));
+
+/**
+ * SHA-256 of the canonical normalized dataset (row order independent). Re-validates first;
+ * throws TypeError (code INVALID_DATASET) for anything validateDataset rejects.
+ */
 export function datasetHash(dataset) {
-  return sha256Hex(canonicalJson(dataset));
+  const v = validateDataset(dataset);
+  if (!v.ok) throw argumentError('INVALID_DATASET', 'dataset failed validation; call validateDataset() for the errors');
+  return hashDataset(v.dataset);
 }
 
 function buildReport(ds) {
@@ -122,8 +151,9 @@ function buildReport(ds) {
     const ids = rows.map((r) => r.id);
     ids.forEach((id) => conflicted.add(id));
     const s = sumMinutes(rows.map((r) => r.minutes));
+    const common = (f) => (rows.every((r) => r[f] === rows[0][f]) ? rows[0][f] : null);
     addFinding('CONFLICTING_REPORTED_SOURCE', {
-      facilityId: rows[0].facilityId, personId: rows[0].personId, date: rows[0].date, role: null, minutes: s.value,
+      facilityId: common('facilityId'), personId: common('personId'), date: common('date'), role: common('role'), minutes: s.value,
       rowIds: ids, relatedRowIds: [ref], sourceReference: ref,
       message: `Source reference ${ref} is claimed by differing reported rows ${ids.join(', ')}; the whole reference group is excluded pending review. One support row is never allocated twice.`,
       citations: [rulesCite(rules)],
@@ -252,7 +282,7 @@ function buildReport(ds) {
     certified: false,
     provenance: {
       datasetId: ds.datasetId,
-      datasetHash: datasetHash(ds),
+      datasetHash: hashDataset(ds),
       schemaVersion: ds.schemaVersion,
       rules: ds.rules,
       inputCounts: Object.fromEntries(['facilities', 'persons', 'identityAliases', 'classifications', 'sourceSelections', 'schedule', 'payroll', 'agency', 'reported'].map((t) => [t, ds[t].length])),
@@ -266,7 +296,9 @@ function buildReport(ds) {
     sourceStatuses,
   };
   const reportId = `SLR-${sha256Hex(canonicalJson(body))}`;
-  return deepFreeze({ reportId, ...body });
+  const report = deepFreeze({ reportId, ...body });
+  MINTED_REPORTS.add(report);
+  return report;
 }
 
 function line(r, part) {
@@ -280,20 +312,44 @@ function line(r, part) {
   };
 }
 
-/** Recompute the report hash; true when the report body is untampered. */
+/**
+ * True only for an engine-minted report whose reportId matches its body. A matching hash
+ * alone proves nothing (anyone can recompute one over tampered values), so clones and
+ * hash-shaped documents always return false. Never throws.
+ */
 export function verifyReportId(report) {
-  const { reportId, ...body } = report;
-  return reportId === `SLR-${sha256Hex(canonicalJson(body))}`;
+  if (!MINTED_REPORTS.has(report)) return false;
+  try {
+    const { reportId, ...body } = report;
+    return reportId === `SLR-${sha256Hex(canonicalJson(body))}`;
+  } catch {
+    return false;
+  }
 }
 
-/** Filter principal findings by any of code, personId, date, role, facilityId. */
+const FILTER_KEYS = ['code', 'personId', 'date', 'role', 'facilityId'];
+
+/** Filter principal findings by any of code, personId, date, role, facilityId (own keys only). */
 export function filterFindings(report, criteria = {}) {
-  const keys = ['code', 'personId', 'date', 'role', 'facilityId'];
-  return report.findings.filter((f) => keys.every((k) => criteria[k] === undefined || f[k] === criteria[k]));
+  assertEngineReport(report);
+  if (criteria === null || typeof criteria !== 'object' || Array.isArray(criteria) || ![Object.prototype, null].includes(Object.getPrototypeOf(criteria))) {
+    throw argumentError('INVALID_ARGUMENT', 'criteria must be a plain object');
+  }
+  const wanted = [];
+  for (const k of Reflect.ownKeys(criteria)) {
+    if (!FILTER_KEYS.includes(k)) throw argumentError('INVALID_ARGUMENT', `unknown filter key "${String(k)}"; allowed: ${FILTER_KEYS.join(', ')}`);
+    const v = criteria[k];
+    if (v === undefined) continue;
+    if (typeof v !== 'string') throw argumentError('INVALID_ARGUMENT', `filter "${k}" must be a string`);
+    wanted.push([k, v]);
+  }
+  return report.findings.filter((f) => wanted.every(([k, v]) => f[k] === v));
 }
 
-/** Return the support/status records and reported lines a finding cites. */
+/** Return the support/status records and reported lines a finding cites; null if absent. */
 export function supportingRows(report, findingId) {
+  assertEngineReport(report);
+  if (typeof findingId !== 'string') return null;
   const f = report.findings.find((x) => x.id === findingId);
   if (!f) return null;
   const ids = new Set([...f.rowIds, ...f.relatedRowIds]);
