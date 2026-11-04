@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShiftLedger · synthetic staffing-evidence review</title>
+<meta name="description" content="A browser-only journal for reconciling synthetic nursing staffing evidence: reported minutes against payroll and agency support, with cited rows. Fictional rules.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="masthead">
+  <span class="wordmark">ShiftLedger</span>
+  <a class="btn btn-primary" href="./app/">Open synthetic review</a>
+</header>
+<main id="main">
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Synthetic staffing journal</p>
+      <h1>Every reported nursing minute, checked against the rows that support it.</h1>
+      <p class="lede">ShiftLedger reconciles a synthetic day of reported staffing minutes against payroll and agency evidence, then shows each finding with the exact rows it cites. It runs entirely in your browser on fictional data and fictional rules.</p>
+      <p class="cta"><a class="btn btn-primary" href="./app/">Open synthetic review</a> <a class="link" href="#boundaries">What it is not</a></p>
+    </div>
+    <figure class="timeline" aria-labelledby="tl-cap">
+      <div class="tl-head" aria-hidden="true"><span>Sample day · 2026-10-05</span><span>0</span><span>4 h</span><span>8 h</span></div>
+      <ol class="tl-rows">
+        <li class="tl-row">
+          <span class="tl-who">E1 · RN</span>
+          <span class="tl-track" aria-hidden="true"><span class="tl-bar w100"></span><span class="tl-bar is-dup w100"></span></span>
+          <span class="tl-note is-finding">Duplicate row · 480 min</span>
+        </li>
+        <li class="tl-row">
+          <span class="tl-who">E2 · CNA</span>
+          <span class="tl-track" aria-hidden="true"><span class="tl-split w100"><span class="tl-bar w875"></span><span class="tl-bar is-gap w125"></span></span></span>
+          <span class="tl-note is-finding">Unsupported · 60 min</span>
+        </li>
+        <li class="tl-row">
+          <span class="tl-who">E3 · CNA</span>
+          <span class="tl-track" aria-hidden="true"><span class="tl-bar is-class w50"></span></span>
+          <span class="tl-note is-finding">Classification conflict · 240 min</span>
+        </li>
+        <li class="tl-row is-resolved">
+          <span class="tl-who">Corrected</span>
+          <span class="tl-track" aria-hidden="true"><span class="tl-bar is-ok w100"></span></span>
+          <span class="tl-note is-ok">Rerun · 0 findings</span>
+        </li>
+      </ol>
+      <figcaption id="tl-cap">The three planted findings in the synthetic sample, drawn to an 8-hour scale, and the corrected source that resolves them.</figcaption>
+    </figure>
+  </section>
+
+  <section class="band" aria-labelledby="how-h">
+    <h2 id="how-h">What one review covers</h2>
+    <ol class="steps">
+      <li><h3>Three totals, never blended</h3><p>Raw reported, deduplicated reported and eligible support, in integer minutes with hours alongside.</p></li>
+      <li><h3>Findings with their rows</h3><p>Filter by employee, date, role or finding, then open the reported and support rows each finding cites.</p></li>
+      <li><h3>Notes that change nothing</h3><p>Reviewer decisions annotate a run. They never alter totals, and each run stays in an immutable history.</p></li>
+      <li><h3>Exports you can check</h3><p>Download the report as JSON or formula-safe CSV, then rerun a corrected source and compare.</p></li>
+    </ol>
+  </section>
+
+  <section id="boundaries" class="band boundaries" aria-labelledby="bounds-h">
+    <h2 id="bounds-h">Boundaries</h2>
+    <ul>
+      <li>Synthetic data and explicitly fictional local rules only.</li>
+      <li>Not a CMS or PBJ validator, not certified compliance, not an assessment of care.</li>
+      <li>“Unsupported” means unsupported by the supplied evidence, not fraud or proof that work did not happen.</li>
+      <li>No accounts, server, storage or multi-tenant service. Imported files are read locally in the tab.</li>
+      <li>SHA-256 values identify content. They are not signatures.</li>
+    </ul>
+  </section>
+</main>
+<footer class="foot"><p>ShiftLedger · synthetic demonstration build.</p></footer>
+</body>
+</html>

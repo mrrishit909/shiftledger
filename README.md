@@ -205,7 +205,8 @@ A report hash is integrity identity, not authenticated evidence. Anyone can rebu
 - **JSON parsing:** `JSON.parse` silently keeps the last of any duplicate object keys, and JSON accepts number forms such as `4.8e2` (= 480) while CSV requires plain digits.
 - **Unchecked fields:** `timezone` is validated as a name but is otherwise metadata. The reported row's own role is not checked against `reportableRoles`; only the evidence's mapped role is.
 - **Wider checks:** Cross-table rules beyond those listed (for example, schedule role versus classification) are not validated.
-- **Not implemented:** raw punches and timestamps, a website or UI, accessibility gates, CMS policies or schema versions, authentication, tenancy storage, and connectors.
+- **Not implemented:** raw punches and timestamps, accessibility gates, CMS policies or schema versions, authentication, tenancy storage, and connectors.
+- **Browser UI (first build, not browser-inspected):** `npm run build` copies `public/` and `src/*.js` into `dist/`; `npm run serve` previews it on `http://127.0.0.1:4173/`. The landing page links to the `/app/` workspace, which runs the real engine in the tab. The CSV bundle editor is not built. Visual, motion, mobile and accessibility status is UNVERIFIED; see `docs/UI-DESIGN.md`.
 - **Tenancy:** the engine is pure, and session isolation is limited to report-bound decisions and exports.
 - **Provenance:** provenance holds only within one process. Reports and decisions cannot be persisted and re-imported, and there is no signature or authentication of reviewers. Anyone with a genuine report can call `createDecision`.
 - **Not hardened:** the byte and row limits are guaranteed for JSON and CSV import, which can never produce getters. Objects passed directly to `validateDataset`/`reconcile` are different: accessor properties or proxies at any level are not protected against returning different values between reads.

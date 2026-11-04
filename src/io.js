@@ -1,5 +1,5 @@
 // Strict JSON/CSV import and report export. No network, no file-system access.
-import { canonicalJson } from './canonical.js';
+import { canonicalJson, utf8ByteLength } from './canonical.js';
 import { parseCsv, toCsv } from './csv.js';
 import { reviewSnapshot } from './decisions.js';
 import { argumentError } from './engine.js';
@@ -26,7 +26,7 @@ const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArr
 
 function checkBytes(text, path) {
   if (typeof text !== 'string') return fail('INVALID_INPUT', path, 'input must be a string');
-  const bytes = Buffer.byteLength(text, 'utf8');
+  const bytes = utf8ByteLength(text);
   if (bytes > LIMITS.maxBytes) return fail('SIZE_LIMIT_EXCEEDED', path, `input is ${bytes} bytes; limit is ${LIMITS.maxBytes}`);
   return null;
 }
@@ -54,13 +54,13 @@ export function importDatasetCsv(input) {
   const meta = {};
   for (const k of ['schemaVersion', 'datasetId', 'rules']) if (Object.hasOwn(input, k)) meta[k] = input[k];
   let total;
-  try { total = Buffer.byteLength(JSON.stringify(meta) ?? '', 'utf8'); } catch { return fail('INVALID_INPUT', '$', 'schemaVersion, datasetId and rules must be JSON-serializable'); }
+  try { total = utf8ByteLength(JSON.stringify(meta) ?? ''); } catch { return fail('INVALID_INPUT', '$', 'schemaVersion, datasetId and rules must be JSON-serializable'); }
   const texts = {};
   for (const t of TABLES) {
     const text = Object.hasOwn(tables, t) ? tables[t] : undefined;
     if (typeof text !== 'string') return fail('MISSING_TABLE', `tables.${t}`, `CSV text for "${t}" is required (header only for an empty table)`);
     texts[t] = text;
-    total += Buffer.byteLength(text, 'utf8');
+    total += utf8ByteLength(text);
   }
   if (total > LIMITS.maxBytes) return fail('SIZE_LIMIT_EXCEEDED', '$', `CSV input (tables plus metadata) is ${total} bytes; limit is ${LIMITS.maxBytes}`);
   const dataset = { ...meta };
