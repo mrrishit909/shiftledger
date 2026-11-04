@@ -1,6 +1,6 @@
 # ShiftLedger UI design plan (compact)
 
-Audience: a staffing controller or reviewer checking synthetic evidence. Primary action: **Open synthetic review** (`/app/`). No logos, customers, metrics or testimonials are invented. Everything is synthetic, uses fictional rules, and runs in one browser tab with no auth, backend, storage or tenancy.
+Audience: a staffing controller or reviewer checking staffing evidence. Primary action: **Open review workspace** (`/app/`). No logos, customers, metrics or testimonials are invented. The bundled demo data is synthetic; imported files are labeled unverified user-supplied data on every run, export and history entry (origin comes from the control used, not from content). Everything uses fictional rules and runs in one browser tab with no auth, backend, storage or tenancy.
 
 ## Three directions considered
 

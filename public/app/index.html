@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Synthetic review · ShiftLedger</title>
-<meta name="description" content="Browser-only review workspace for synthetic staffing evidence. Fictional rules; not a CMS or PBJ validator.">
+<title>Review workspace · ShiftLedger</title>
+<meta name="description" content="Browser-only staffing-evidence review workspace with a bundled synthetic demo. Imported files are labeled unverified user-supplied data. Fictional rules; not a CMS or PBJ validator.">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="../styles.css">
@@ -14,7 +14,7 @@
 <a class="skip" href="#workspace">Skip to workspace</a>
 <header class="masthead">
   <a class="wordmark" href="../">ShiftLedger</a>
-  <p class="tag">Synthetic review · runs only in this browser tab</p>
+  <p class="tag">Review workspace · runs only in this browser tab · bundled demo is synthetic, imported files are unverified</p>
 </header>
 <main id="workspace" tabindex="-1">
   <h1 class="sr-only">ShiftLedger reconciliation workspace</h1>
@@ -29,10 +29,11 @@
         <div class="stack">
           <button id="load-sample" type="button" class="btn">Load synthetic sample</button>
           <button id="load-corrected" type="button" class="btn-quiet">Load corrected source</button>
-          <label class="file">Import dataset JSON (max <span id="limit">1 MiB</span>)
-            <input id="file" type="file" accept="application/json,.json">
+          <label class="file">Import your own dataset JSON (max <span id="limit">1 MiB</span>)
+            <input id="file" type="file" accept="application/json,.json" aria-describedby="file-note">
           </label>
         </div>
+        <p id="file-note" class="fine">Imported files are always labeled unverified user-supplied data, whatever their name or contents say. ShiftLedger does not inspect content and cannot tell whether a file holds real or sensitive information.</p>
         <p class="pending">Staged: <strong id="pending-label">nothing yet</strong></p>
         <button id="run" type="button" class="btn btn-primary" disabled>Reconcile</button>
       </section>
@@ -54,6 +55,7 @@
         <div class="panel report-head">
           <h2 id="report-heading" tabindex="-1">Reconciliation report</h2>
           <p id="run-label" class="run-label"></p>
+          <p id="origin" class="origin"></p>
           <dl class="ids">
             <div><dt>Report ID</dt><dd id="report-id" class="mono"></dd></div>
             <div><dt>Dataset</dt><dd id="dataset-id" class="mono"></dd></div>
@@ -102,7 +104,7 @@
 </main>
 <footer class="foot">
   <p id="disclaimer"></p>
-  <p>No accounts, no server storage, no uploads: files are read locally and discarded when the tab closes. SHA-256 values identify content; they are not signatures.</p>
+  <p>No accounts, no server storage, no uploads: imported files are read in this tab and kept only in memory until it closes, and this page's security policy blocks network connections. Downloaded JSON and CSV exports contain the run's data and its origin label. SHA-256 values identify content; they are not signatures.</p>
 </footer>
 </body>
 </html>

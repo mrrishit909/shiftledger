@@ -3,8 +3,12 @@ import { canonicalJson, compareCodeUnits, deepFreeze, sha256Hex, stableId, sumMi
 import { validateDataset } from './validate.js';
 
 export const ENGINE_VERSION = 'shiftledger-engine/0.1.0';
-export const REPORT_SCHEMA = 'shiftledger.report.v1';
-export const DISCLAIMER = 'Synthetic illustration using explicitly fictional local rules. Not a CMS/PBJ validator, not certified compliance, not a staffing-care assessment. Unsupported means unsupported by supplied evidence, not fraud or proof of non-work.';
+// v2 changes only the disclaimer text (and therefore reportId); every calculated field is
+// identical to v1. v1 said "Synthetic illustration" for any input, which was false for
+// arbitrary user-supplied data, so v1 reports must not be read as proof of synthetic origin.
+export const REPORT_SCHEMA = 'shiftledger.report.v2';
+export const LEGACY_REPORT_SCHEMAS = Object.freeze(['shiftledger.report.v1']);
+export const DISCLAIMER = 'Applies explicitly fictional, illustrative local rules to the supplied input. The engine does not verify where the input came from and cannot tell synthetic from real data. Not a CMS/PBJ validator, not certified compliance, not a staffing-care assessment. Unsupported means unsupported by supplied evidence, not fraud or proof of non-work.';
 
 export const FINDING_CODES = Object.freeze([
   'DUPLICATE_REPORTED_SOURCE',

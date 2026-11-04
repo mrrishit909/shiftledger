@@ -113,6 +113,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ids div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 0.5rem; }
 .ids dt { font-size: 0.8rem; color: var(--ink-soft); } .ids dd { margin: 0; }
 .readiness { font-size: 0.9rem; }
+.origin { font-size: 0.9rem; padding: 0.6rem 0.9rem; border-left: 4px solid var(--sage); background: var(--sage-wash); color: #2f4a2e; }
+.origin.is-unverified { border-left-color: var(--coral); background: var(--coral-wash); color: #5e2414; }
+.hist-o { display: block; font-size: 0.75rem; color: var(--sage); }
+.hist-o.is-unverified { color: var(--coral); font-weight: 600; }
 .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .unit { font: 500 0.78rem var(--sans); color: var(--ink-soft); letter-spacing: 0.03em; margin-left: 0.4rem; }
 .totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0; margin: 0; border-top: 1px solid var(--rule); }

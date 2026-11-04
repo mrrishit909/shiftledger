@@ -13,7 +13,7 @@ const out = build(join(mkdtempSync(join(tmpdir(), 'shiftledger-')), 'dist'));
 test.after(() => rmSync(join(out, '..'), { recursive: true, force: true }));
 
 test('dist ships the UI and engine only', () => {
-  for (const f of ['index.html', 'styles.css', 'app/index.html', 'app/app.js', 'src/index.js', 'src/canonical.js']) assert.ok(existsSync(join(out, f)), f);
+  for (const f of ['index.html', 'styles.css', 'app/index.html', 'app/app.js', 'src/index.js', 'src/canonical.js', 'src/origin.js']) assert.ok(existsSync(join(out, f)), f);
   for (const f of ['docs', 'test', 'README.md', 'package.json', 'scripts', '.git']) assert.ok(!existsSync(join(out, f)), `${f} must not ship`);
 });
 
@@ -48,6 +48,11 @@ test('engine workflow used by the UI: import, reconcile, decide, export, rerun',
   assert.equal(log.ok, true);
   assert.match(m.exportReportJson(r.report, log.log), /"certified":false/);
   assert.match(m.exportReportCsv(r.report, log.log), /^recordType,/);
+  // Imported JSON (the file path) is unverified even with fixture content; the built-in control is synthetic demo.
+  assert.equal(JSON.parse(m.exportReportJson(r.report, log.log, m.userSuppliedOrigin())).origin.kind, 'USER_SUPPLIED_UNVERIFIED');
+  const demo = m.loadBundledFixture('golden');
+  const demoReport = m.reconcile(demo.dataset).report;
+  assert.equal(JSON.parse(m.exportReportJson(demoReport, [], m.originFor(demoReport, demo.origin))).origin.kind, 'BUNDLED_SYNTHETIC_DEMO');
   assert.equal(m.reconcile(m.correctedFixture()).report.findings.length, 0);
   assert.equal(m.importDatasetJson('x'.repeat(m.LIMITS.maxBytes + 1)).errors[0].code, 'SIZE_LIMIT_EXCEEDED');
   assert.equal(m.importDatasetJson('{').ok, false);

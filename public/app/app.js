@@ -1,9 +1,12 @@
-// ShiftLedger synthetic review workspace. Browser-only: data never leaves this tab.
+// ShiftLedger review workspace. Browser-only: files are read with File.text() in this tab and
+// the page CSP blocks network connections; exports are local downloads.
 // Every engine or file string is written with textContent; no HTML interpolation anywhere.
+// Run origin comes from the control used (bundled-fixture buttons vs file import), never from
+// file names or dataset content; it cannot detect or prevent real or sensitive data.
 import {
   reconcile, filterFindings, supportingRows, createDecision, appendDecision, readiness,
-  importDatasetJson, exportReportJson, exportReportCsv, goldenFixture, correctedFixture,
-  LIMITS, DECISION_TYPES, DISCLAIMER,
+  importDatasetJson, exportReportJson, exportReportCsv, loadBundledFixture, userSuppliedOrigin, originFor,
+  LIMITS, DECISION_TYPES, DISCLAIMER, ORIGIN_KINDS,
 } from '../src/index.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,9 +42,9 @@ const TOTALS = [
 const FILTERS = [['f-person', 'personId'], ['f-date', 'date'], ['f-role', 'role'], ['f-code', 'code']];
 
 const state = {
-  history: [], // { seq, label, report, log }: report is the engine-minted object, never cloned
+  history: [], // { seq, label, report, origin, log }: report is the engine-minted object, never cloned
   view: -1,
-  pending: null, // { label, dataset } staged for the next run
+  pending: null, // { label, dataset, origin } staged for the next run
   selected: null,
   busy: false,
 };
@@ -67,9 +70,12 @@ function showErrors(headline, errors = []) {
 }
 function clearErrors() { $('errors').hidden = true; $('errors').replaceChildren(); }
 
-function stage(label, dataset) {
-  state.pending = { label, dataset };
-  $('pending-label').textContent = label;
+const isBundled = (origin) => origin.kind === ORIGIN_KINDS.BUNDLED;
+const originTag = (origin) => (isBundled(origin) ? 'Synthetic demo' : 'Unverified user-supplied data');
+
+function stage(label, dataset, origin) {
+  state.pending = { label, dataset, origin };
+  $('pending-label').textContent = `${label} (${originTag(origin)})`;
   $('run').disabled = false;
   clearErrors();
   announce(`${label} staged. Press Reconcile to run it.`);
@@ -77,7 +83,7 @@ function stage(label, dataset) {
 
 function run() {
   if (!state.pending || state.busy) return;
-  const { label, dataset } = state.pending;
+  const { label, dataset, origin: stagedOrigin } = state.pending;
   state.busy = true;
   $('run').disabled = true;
   $('workspace').setAttribute('aria-busy', 'true');
@@ -93,7 +99,8 @@ function run() {
       return;
     }
     clearErrors();
-    state.history.push({ seq: state.history.length + 1, label, report: res.report, log: Object.freeze([]) });
+    // Origin is fixed per run; originFor downgrades to unverified unless it matches this report.
+    state.history.push({ seq: state.history.length + 1, label, report: res.report, origin: originFor(res.report, stagedOrigin), log: Object.freeze([]) });
     state.view = state.history.length - 1;
     state.selected = null;
     render();
@@ -116,7 +123,8 @@ async function onFile(ev) {
   try { text = await file.text(); } catch { showErrors(`“${file.name}” could not be read. The last report is unchanged.`); return; }
   const res = importDatasetJson(text);
   if (!res.ok) { showErrors(`“${file.name}” was rejected. The last report is unchanged.`, res.errors); return; }
-  stage(`Imported file: ${file.name}`, res.dataset);
+  // A file is unverified whatever its name or content says; it is never treated as a bundled fixture.
+  stage(`Imported file: ${file.name}`, res.dataset, userSuppliedOrigin());
 }
 
 function download(name, type, text) {
@@ -138,6 +146,9 @@ function render() {
   const { report, log } = entry;
   const latest = state.view === state.history.length - 1;
   $('run-label').textContent = `Run ${entry.seq} · ${entry.label}${latest ? '' : ' (earlier run, read-only history)'}`;
+  const origin = $('origin');
+  origin.className = isBundled(entry.origin) ? 'origin is-demo' : 'origin is-unverified';
+  origin.replaceChildren(el('strong', { text: `Data origin: ${originTag(entry.origin)}. ` }), entry.origin.statement, el('br'), entry.origin.warning);
   $('report-id').textContent = report.reportId;
   $('dataset-id').textContent = `${report.provenance.datasetId} · dataset hash ${report.provenance.datasetHash.slice(0, 16)}…`;
   const ready = readiness(report, log);
@@ -282,6 +293,7 @@ function renderHistory() {
       type: 'button', class: on ? 'hist is-current' : 'hist', 'aria-current': on ? 'true' : null,
       onclick: () => { state.view = i; state.selected = null; clearErrors(); render(); announce(`Viewing run ${h.seq}.`); },
     }, el('span', { class: 'hist-n', text: `Run ${h.seq}` }), el('span', { class: 'hist-l', text: h.label }),
+    el('span', { class: isBundled(h.origin) ? 'hist-o' : 'hist-o is-unverified', text: originTag(h.origin) }),
     el('span', { class: 'hist-m', text: `${h.report.findings.length} finding(s) · ${h.report.reportId.slice(0, 12)}…` }))));
   });
 }
@@ -289,15 +301,17 @@ function renderHistory() {
 function init() {
   $('disclaimer').textContent = DISCLAIMER;
   $('limit').textContent = `${LIMITS.maxBytes.toLocaleString('en-US')} bytes`;
-  $('load-sample').addEventListener('click', () => stage('Synthetic sample (golden)', goldenFixture()));
-  $('load-corrected').addEventListener('click', () => stage('Corrected source', correctedFixture()));
-  $('rerun-corrected').addEventListener('click', () => { stage('Corrected source (rerun)', correctedFixture()); run(); });
+  // Only these built-in controls stage bundled fixtures; loadBundledFixture generates the data itself.
+  const bundled = (label, name) => { const { dataset, origin } = loadBundledFixture(name); stage(label, dataset, origin); };
+  $('load-sample').addEventListener('click', () => bundled('Synthetic sample (golden)', 'golden'));
+  $('load-corrected').addEventListener('click', () => bundled('Corrected source', 'corrected'));
+  $('rerun-corrected').addEventListener('click', () => { bundled('Corrected source (rerun)', 'corrected'); run(); });
   $('file').addEventListener('change', onFile);
   $('run').addEventListener('click', run);
   for (const [id] of FILTERS) $(id).addEventListener('change', () => { if (current()) { renderFindings(); } });
   $('clear-filters').addEventListener('click', () => { for (const [id] of FILTERS) $(id).value = ''; if (current()) renderFindings(); });
-  $('dl-json').addEventListener('click', () => { const e = current(); if (e) download(`${e.report.reportId}.json`, 'application/json', exportReportJson(e.report, e.log)); });
-  $('dl-csv').addEventListener('click', () => { const e = current(); if (e) download(`${e.report.reportId}.csv`, 'text/csv', exportReportCsv(e.report, e.log)); });
+  $('dl-json').addEventListener('click', () => { const e = current(); if (e) download(`${e.report.reportId}.json`, 'application/json', exportReportJson(e.report, e.log, e.origin)); });
+  $('dl-csv').addEventListener('click', () => { const e = current(); if (e) download(`${e.report.reportId}.csv`, 'text/csv', exportReportCsv(e.report, e.log, e.origin)); });
   $('boot').hidden = true;
   render();
   announce('Ready. Load the synthetic sample to begin.');

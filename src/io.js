@@ -3,9 +3,13 @@ import { canonicalJson, utf8ByteLength } from './canonical.js';
 import { parseCsv, toCsv } from './csv.js';
 import { reviewSnapshot } from './decisions.js';
 import { argumentError } from './engine.js';
+import { originFor, originView } from './origin.js';
 import { LIMITS, TABLES, validateDataset } from './validate.js';
 
-export const EXPORT_SCHEMA = 'shiftledger.export.v1';
+// v2 adds the per-run `origin` (JSON) and ORIGIN/DISCLAIMER rows (CSV). v1 exports carried only
+// the old unconditional "Synthetic illustration" disclaimer and say nothing reliable about origin.
+export const EXPORT_SCHEMA = 'shiftledger.export.v2';
+export const LEGACY_EXPORT_SCHEMAS = Object.freeze(['shiftledger.export.v1']);
 const PERSON_COLS = ['personId', 'externalId'];
 const PERSON_TABLES = ['schedule', 'payroll', 'agency', 'reported'];
 export const CSV_COLUMNS = Object.freeze({
@@ -126,14 +130,17 @@ export function exportDatasetCsv(dataset) {
 }
 
 /**
- * Canonical JSON export of report, decisions and readiness. Always certified:false. Only an
- * engine-minted report is accepted (TypeError code UNTRUSTED_REPORT otherwise).
+ * Canonical JSON export of report, decisions, readiness and per-run origin. Always
+ * certified:false. Only an engine-minted report is accepted (TypeError code UNTRUSTED_REPORT
+ * otherwise). `origin` is a record from origin.js; omitted, copied, spoofed or mismatched
+ * origins export as USER_SUPPLIED_UNVERIFIED (see originFor).
  */
-export function exportReportJson(report, decisions) {
+export function exportReportJson(report, decisions, origin) {
   const snap = reviewSnapshot(report, decisions);
   return canonicalJson({
     exportSchema: EXPORT_SCHEMA,
     certified: false,
+    origin: originView(originFor(report, origin)),
     readiness: snap.readiness,
     report,
     decisions: snap.decisions,
@@ -144,14 +151,18 @@ export const REPORT_CSV_COLUMNS = Object.freeze(['recordType', 'id', 'code', 'fa
 
 /**
  * Flat formula-safe CSV export. Integer minute columns are raw integers. Reviewer notes
- * get their own column so free text can never be confused with key=value detail.
+ * get their own column so free text can never be confused with key=value detail. ORIGIN and
+ * DISCLAIMER rows follow META; `origin` is resolved exactly as in exportReportJson.
  */
-export function exportReportCsv(report, decisions) {
+export function exportReportCsv(report, decisions, origin) {
   const snap = reviewSnapshot(report, decisions);
+  const o = originFor(report, origin);
   const rows = [];
   const p = report.provenance;
   const r = snap.readiness;
-  rows.push(['META', report.reportId, 'REPORT', null, null, null, null, null, null, null, null, `datasetId=${p.datasetId};datasetHash=${p.datasetHash};engine=${report.engineVersion};certified=false;readiness=${r.status}`]);
+  rows.push(['META', report.reportId, 'REPORT', null, null, null, null, null, null, null, null, `datasetId=${p.datasetId};datasetHash=${p.datasetHash};engine=${report.engineVersion};certified=false;readiness=${r.status};exportSchema=${EXPORT_SCHEMA};reportSchema=${report.reportSchema};origin=${o.kind}`]);
+  rows.push(['ORIGIN', o.kind, o.fixture ?? 'NONE', null, null, null, null, null, null, null, null, `${o.statement} ${o.warning}`]);
+  rows.push(['DISCLAIMER', report.reportSchema, null, null, null, null, null, null, null, null, null, report.disclaimer]);
   rows.push(['RULES', p.rules.rulesetId, 'FICTIONAL_RULES', null, null, null, null, p.rules.toleranceMinutes, 'minutes', null, null, `approvalStatus=${p.rules.approvalStatus};reportableRoles=${p.rules.reportableRoles.join('|')};eligibleStatuses=${p.rules.eligibleStatuses.join('|')}`]);
   for (const [k, v] of Object.entries(report.totals)) if (k !== 'unit') rows.push(['TOTAL', k, null, null, null, null, null, v, 'minutes', null, null, null]);
   for (const k of ['matched', 'classificationConflict', 'unsupported', 'selectionRequired', 'configurationRequired', 'conflictingReferenceExcluded']) rows.push(['PARTITION', k, null, null, null, null, null, report.partition[k], 'minutes', null, null, null]);

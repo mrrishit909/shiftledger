@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { sha256Hex, utf8ByteLength } from '../src/canonical.js';
+import { canonicalJson, sha256Hex, utf8ByteLength } from '../src/canonical.js';
 import { reconcile, goldenFixture, correctedFixture } from '../src/index.js';
 
 const ref = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -32,7 +32,21 @@ test('large input (~2 MiB) matches node:crypto', () => {
   assert.equal(sha256Hex(s), ref(s));
 });
 
-test('golden and corrected report IDs are unchanged from the node:crypto checkpoint', () => {
-  assert.equal(reconcile(goldenFixture()).report.reportId, 'SLR-9b005d975cbec0c63ca51cedb5e7341f7fa88bb894d5e4a225e8b4809ff1a842');
-  assert.equal(reconcile(correctedFixture()).report.reportId, 'SLR-05758d8b5346a7f7934d9394e196b1121429d36f427009fe5d4af1da0af927c3');
+// shiftledger.report.v1 checkpoint IDs. v2 changed only reportSchema and the disclaimer text.
+const V1_IDS = { golden: 'SLR-9b005d975cbec0c63ca51cedb5e7341f7fa88bb894d5e4a225e8b4809ff1a842', corrected: 'SLR-05758d8b5346a7f7934d9394e196b1121429d36f427009fe5d4af1da0af927c3' };
+const V1_DISCLAIMER = 'Synthetic illustration using explicitly fictional local rules. Not a CMS/PBJ validator, not certified compliance, not a staffing-care assessment. Unsupported means unsupported by supplied evidence, not fraud or proof of non-work.';
+
+test('golden and corrected v2 report IDs are pinned against the node:crypto checkpoint', () => {
+  assert.equal(reconcile(goldenFixture()).report.reportId, 'SLR-1cc0c9b7479558c3838b3c6760358559ddf348b0d5606f20387b7b722d6221dc');
+  assert.equal(reconcile(correctedFixture()).report.reportId, 'SLR-599bc2fc596d1dd42c3141827e2801d12e2393929d9e628eeb9165e84d06e583');
+});
+
+test('v2 calculation content is byte-identical to v1: restoring the two v1 header fields reproduces the v1 IDs', () => {
+  for (const [name, fx] of [['golden', goldenFixture], ['corrected', correctedFixture]]) {
+    const { reportId, ...body } = reconcile(fx()).report;
+    assert.equal(body.reportSchema, 'shiftledger.report.v2');
+    assert.doesNotMatch(body.disclaimer, /synthetic illustration/i);
+    const v1Body = { ...body, reportSchema: 'shiftledger.report.v1', disclaimer: V1_DISCLAIMER };
+    assert.equal(`SLR-${ref(canonicalJson(v1Body))}`, V1_IDS[name], name);
+  }
 });

@@ -2,7 +2,7 @@
 
 ShiftLedger is a dependency-free ESM engine for Node 24+. It reconciles PBJ-*style* reported staffing minutes against fictional payroll, agency and schedule evidence. It implements `../atlas/docs/specs/SHIFTLEDGER-VERTICAL-SLICE.md` (rev 1.1), which is the authoritative spec.
 
-> **Not a CMS/PBJ validator.** All rules, roles, people and facilities are explicitly fictional (`rules.fictional: true`, `approvalStatus: "ILLUSTRATIVE_UNAPPROVED"`). Reports are always `certified: false`. "Unsupported" means *unsupported by supplied evidence*. It is never a finding of fraud or proof of non-work. This version has no CMS allocation rules, reportable-category policy, iQIES submission, payroll connectors, website or network access.
+> **Not a CMS/PBJ validator.** Rules must be declared fictional (`rules.fictional: true`, `approvalStatus: "ILLUSTRATIVE_UNAPPROVED"`). The people and facilities in the bundled fixtures are fictional, but the engine accepts any valid input and cannot tell synthetic from real data; see [Data origin](#data-origin-export-v2). Reports are always `certified: false`. "Unsupported" means *unsupported by supplied evidence*. It is never a finding of fraud or proof of non-work. This version has no CMS allocation rules, reportable-category policy, iQIES submission, payroll connectors, website or network access.
 
 ```sh
 npm test          # same as: node --test   (no dependencies, no install step)
@@ -18,6 +18,7 @@ npm test          # same as: node --test   (no dependencies, no install step)
 | `src/io.js` | Strict JSON/CSV import, dataset export, and report JSON/CSV export. |
 | `src/csv.js` | RFC 4180-style CSV parser and formula-safe writer. |
 | `src/decisions.js` | Inert reviewer decisions and readiness. |
+| `src/origin.js` | Per-run data origin from the control path (`loadBundledFixture`, `userSuppliedOrigin`, `originFor`). |
 | `src/canonical.js` | Code-unit ordering, canonical JSON, SHA-256, overflow-flagging sums. |
 | `src/fixtures.js` | Literal fixtures: golden `SL-SYN-001`, corrected, split, and overnight. |
 
@@ -165,9 +166,28 @@ const d = createDecision(report, { findingId: report.findings[0].id, decision: '
   reviewerId: 'REV-1', note: '=looks fine', decidedAt: '2026-11-03T12:00:00Z' });
 const { log } = appendDecision([], report, d.decision); // rejects other reports, duplicates, edited records
 readiness(report, log);                          // { status:'REVIEW_INCOMPLETE', certified:false, ... }
-exportReportJson(report, log);                   // canonical JSON: report, decisions, readiness; certified:false
+exportReportJson(report, log);                   // canonical JSON: origin, report, decisions, readiness; certified:false
 exportReportCsv(report, log);                    // flat CSV; note cell becomes "'=looks fine"
+// No origin argument: exported as USER_SUPPLIED_UNVERIFIED (see "Data origin" below).
 ```
+
+### Data origin (export v2)
+
+Any input that passes validation is reconciled, whatever it contains, so a report cannot say "synthetic" on its own. Each run's origin is recorded from the **control path** that supplied the data, never from the data:
+
+```js
+const demo = loadBundledFixture('golden');       // or 'corrected'; generates the fixture itself
+const rep = reconcile(demo.dataset).report;
+exportReportJson(rep, [], originFor(rep, demo.origin)); // origin.kind: 'BUNDLED_SYNTHETIC_DEMO'
+exportReportJson(rep, [], userSuppliedOrigin());        // origin.kind: 'USER_SUPPLIED_UNVERIFIED'
+```
+
+- `BUNDLED_SYNTHETIC_DEMO` comes only from `loadBundledFixture`, the call behind the workspace's **Load synthetic sample**, **Load corrected source** and **Rerun with corrected source** buttons. Origin records are minted and frozen the same way as reports. `originFor` keeps a bundled origin only when the report's `datasetHash` equals the fixture it was minted for. That hash check can only downgrade a label, never upgrade one.
+- Everything else is `USER_SUPPLIED_UNVERIFIED`, including file imports, other API callers, an omitted `origin`, hand-built/cloned/JSON-copied origin objects, and a bundled origin paired with an edited or different dataset. A file whose content is byte-identical to a fixture is still unverified, and file names, `datasetId`, `rulesetId` and `rules.fictional` are never consulted.
+- Every exported origin carries `contentInspected: false` and `ORIGIN_WARNING`: origin labels do not inspect content and cannot detect or prevent real or sensitive data. A label does not make data safe to share.
+- JSON export `shiftledger.export.v2` adds a top-level `origin` object (`kind`, `fixture`, `basis`, `contentInspected`, `statement`, `warning`). The CSV export adds `exportSchema`, `reportSchema` and `origin` to the `META` detail, then an `ORIGIN` row and a `DISCLAIMER` row right after `META`. The column set (`REPORT_CSV_COLUMNS`) is unchanged.
+
+**v1 compatibility.** `shiftledger.report.v2` changes only `reportSchema` and the `disclaimer` text. Every calculated field is identical, which a test checks by restoring the two v1 fields and reproducing the v1 checkpoint `reportId`s. Because the disclaimer is part of the hashed body, **every `reportId` changes** (golden `SLR-1cc0c9b7…`, corrected `SLR-599bc2fc…`), and so do the `decisionId`s derived from them. The v1 disclaimer ("Synthetic illustration…") was applied to every input unconditionally, so a `shiftledger.report.v1` / `shiftledger.export.v1` document (`LEGACY_REPORT_SCHEMAS`, `LEGACY_EXPORT_SCHEMAS`) is not evidence of synthetic origin. Treat its data as unverified. No legacy document can be re-exported or relabeled: there is no report re-import, and every export API rejects deserialized reports (`UNTRUSTED_REPORT`). To get a v2 export, re-run `reconcile` on the source through the right control. The two-argument form `exportReportJson(report, log)` still works and exports as unverified.
 
 Decision types are `ACKNOWLEDGED`, `DISPUTED` and `NEEDS_EVIDENCE`. A decision has `effect: "NONE_ANNOTATION_ONLY"`; it never changes source records, findings, totals or certification. Readiness statuses are `NO_PRINCIPAL_FINDINGS_NOT_CERTIFIED`, `REVIEW_INCOMPLETE` and `REVIEWED_NOT_CERTIFIED`. `decidedAt` is supplied by the caller, because the engine never reads the clock.
 
@@ -198,7 +218,7 @@ A report hash is integrity identity, not authenticated evidence. Anyone can rebu
 ### CSV formats
 
 - **Dataset CSV import.** One CSV text per table, with the exact header given in `CSV_COLUMNS[table]`. Rules are passed as an object. The parser follows RFC 4180: CRLF or LF line endings, `""` escapes, and no bare CR, bare quote or NUL. An empty cell means the field is absent, and `minutes` must be plain digits.
-- **Report CSV export** (`REPORT_CSV_COLUMNS`). Contains `META`, `RULES`, `TOTAL`, `PARTITION`, `FINDING`, `CONTEXT`, `SOURCE` and `DECISION` rows. Minutes are raw integers, and negative differences are numbers. Any string cell starting with `= + - @ TAB CR` gets an apostrophe prefix. Reviewer notes have their own `note` column. The tests parse the export and check every cell.
+- **Report CSV export** (`REPORT_CSV_COLUMNS`). Contains `META`, `ORIGIN`, `DISCLAIMER`, `RULES`, `TOTAL`, `PARTITION`, `FINDING`, `CONTEXT`, `SOURCE` and `DECISION` rows. Minutes are raw integers, and negative differences are numbers. Any string cell starting with `= + - @ TAB CR` gets an apostrophe prefix. Reviewer notes have their own `note` column. The tests parse the export and check every cell.
 
 ## Known gaps and limitations (honest scope)
 
