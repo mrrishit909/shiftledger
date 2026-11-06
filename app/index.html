@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review workspace · ShiftLedger</title>
+<meta name="description" content="Browser-only staffing-evidence review workspace with a bundled synthetic demo. Imported files are labeled unverified user-supplied data. Fictional rules; not a CMS or PBJ validator.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../styles.css">
+<script type="module" src="./app.js"></script>
+</head>
+<body class="workspace-page">
+<a class="skip" href="#workspace">Skip to workspace</a>
+<header class="masthead">
+  <a class="wordmark" href="../">ShiftLedger</a>
+  <p class="tag">Review workspace · runs only in this browser tab · bundled demo is synthetic, imported files are unverified</p>
+</header>
+<main id="workspace" tabindex="-1">
+  <h1 class="sr-only">ShiftLedger reconciliation workspace</h1>
+  <p id="boot" class="boot">Loading the reconciliation engine… If this message stays, JavaScript modules are blocked.</p>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+  <div id="errors" class="errors" role="alert" hidden></div>
+
+  <div class="layout">
+    <aside class="rail" aria-label="Sources and run history">
+      <section class="panel">
+        <h2>1 · Choose a source</h2>
+        <div class="stack">
+          <button id="load-sample" type="button" class="btn">Load synthetic sample</button>
+          <button id="load-corrected" type="button" class="btn-quiet">Load corrected source</button>
+          <label class="file">Import your own dataset JSON (max <span id="limit">1 MiB</span>)
+            <input id="file" type="file" accept="application/json,.json" aria-describedby="file-note">
+          </label>
+        </div>
+        <p id="file-note" class="fine">Imported files are always labeled unverified user-supplied data, whatever their name or contents say. ShiftLedger does not inspect content and cannot tell whether a file holds real or sensitive information.</p>
+        <p class="pending">Staged: <strong id="pending-label">nothing yet</strong></p>
+        <button id="run" type="button" class="btn btn-primary" disabled>Reconcile</button>
+      </section>
+      <section class="panel">
+        <h2>Run history</h2>
+        <p class="fine">Each run is immutable. A rejected source never replaces the last report.</p>
+        <p id="history-empty" class="empty-note">No runs yet.</p>
+        <ol id="history" class="history"></ol>
+      </section>
+    </aside>
+
+    <div class="main">
+      <section id="empty" class="panel empty-state">
+        <h2>No report yet</h2>
+        <p>Load the synthetic sample, then press <strong>Reconcile</strong>. The sample has three planted findings: a duplicate reported row, unsupported minutes, and a classification conflict. The corrected source resolves all three.</p>
+      </section>
+
+      <section id="report" hidden aria-labelledby="report-heading">
+        <div class="panel report-head">
+          <h2 id="report-heading" tabindex="-1">Reconciliation report</h2>
+          <p id="run-label" class="run-label"></p>
+          <p id="origin" class="origin"></p>
+          <dl class="ids">
+            <div><dt>Report ID</dt><dd id="report-id" class="mono"></dd></div>
+            <div><dt>Dataset</dt><dd id="dataset-id" class="mono"></dd></div>
+          </dl>
+          <p id="readiness" class="readiness"></p>
+          <div class="actions">
+            <button id="dl-json" type="button" class="btn-quiet">Download JSON</button>
+            <button id="dl-csv" type="button" class="btn-quiet">Download CSV</button>
+            <button id="rerun-corrected" type="button" class="btn">Rerun with corrected source</button>
+          </div>
+        </div>
+
+        <section class="panel" aria-labelledby="totals-h">
+          <h3 id="totals-h">Totals <span class="unit">integer minutes · hours secondary</span></h3>
+          <dl id="totals" class="totals"></dl>
+          <p id="bounds" class="errors" hidden></p>
+        </section>
+
+        <section class="panel" aria-labelledby="findings-h">
+          <h3 id="findings-h">Findings <span id="findings-count" class="unit"></span></h3>
+          <div class="filters" role="group" aria-label="Filter findings">
+            <label for="f-person">Employee<select id="f-person"></select></label>
+            <label for="f-date">Date<select id="f-date"></select></label>
+            <label for="f-role">Role<select id="f-role"></select></label>
+            <label for="f-code">Finding<select id="f-code"></select></label>
+            <button id="clear-filters" type="button" class="btn-quiet">Clear filters</button>
+          </div>
+          <p id="no-findings" class="resolved" hidden>No findings. Every deduplicated reported minute is matched to eligible support under the fictional rules.</p>
+          <p id="no-matches" class="empty-note" hidden>No findings match these filters.</p>
+          <div id="findings-wrap" class="table-scroll" tabindex="0" role="region" aria-label="Findings table">
+            <table>
+              <caption class="sr-only">Findings for the selected run</caption>
+              <thead><tr><th scope="col">Finding</th><th scope="col">Employee</th><th scope="col">Date</th><th scope="col">Role</th><th scope="col">Minutes</th><th scope="col">Hours</th><th scope="col">Review</th><th scope="col"><span class="sr-only">Evidence</span></th></tr></thead>
+              <tbody id="findings-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel evidence" aria-labelledby="evidence-heading">
+          <h3 id="evidence-heading" tabindex="-1">Evidence</h3>
+          <div id="evidence-body"></div>
+        </section>
+      </section>
+    </div>
+  </div>
+</main>
+<footer class="foot">
+  <p id="disclaimer"></p>
+  <p>No accounts, no server storage, no uploads: imported files are read in this tab and kept only in memory until it closes, and this page's security policy blocks network connections. Downloaded JSON and CSV exports contain the run's data and its origin label. SHA-256 values identify content; they are not signatures.</p>
+</footer>
+</body>
+</html>
